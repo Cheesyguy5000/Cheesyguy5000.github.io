@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MouseCat Anime Game</title>
+<style>
+  body {
+    margin: 0;
+    background: #0f3b17;
+    font-family: Arial;
+    color: #fff;
+    text-align: center;
+  }
+  canvas {
+    display: block;
+    margin: 10px auto;
+    background: #144826;
+    border-radius: 12px;
+  }
+  #hud {
+    font-size: 20px;
+  }
+  #powerups {
+    font-size: 16px;
+    margin-top: 5px;
+    min-height: 24px;
+  }
+  #restart {
+    display: none;
+    margin: 15px auto;
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    background: #0b7;
+    color: #fff;
+    cursor: pointer;
+    font-size: 18px;
+  }
+  #leaderboard {
+    list-style: none;
+    padding: 0;
+    font-size: 18px;
+    margin-top: 20px;
+  }
+</style>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js"></script>
+</head>
+<body>
+<canvas id="game" width="900" height="600"></canvas>
+
+<div id="hud">
+  Cheese Eaten: <span id="score">0</span> &nbsp;&nbsp;
+  Lives: <span id="lives">1</span> &nbsp;&nbsp;
+  High Score: <span id="highscore">0</span>
+</div>
+<div id="powerups"></div>
+<button id="restart">Restart</button>
+
+<h2>🌍 Global Leaderboard</h2>
+<ul id="leaderboard"></ul>
+
+<script>
+// ---- Firebase Setup ----
+const firebaseConfig = {
+  apiKey: "AIzaSyBXyVZ8Mbhfo4Sx5JHf3XcyTtFX4V-JiIU",
+  authDomain: "mouse-game-b2db2.firebaseapp.com",
+  projectId: "mouse-game-b2db2",
+  storageBucket: "mouse-game-b2db2.firebasestorage.app.appspot.com",
+  messagingSenderId: "421676719920",
+  appId: "1:421676719920:web:9ea11c80eab35472caf2f5"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// ---- Setup ----
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const W = canvas.width, H = canvas.height;
+
+const scoreEl = document.getElementById("score");
+const livesEl = document.getElementById("lives");
+const highScoreEl = document.getElementById("highscore");
+const restartBtn = document.getElementById("restart");
+
+// ---- Images ----
+// Replace with your GitHub raw links
+const imgPlayer = new Image(); imgPlayer.src = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/player.png";
+const imgCat    = new Image(); imgCat.src    = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/cat.png";
+const imgCheese = new Image(); imgCheese.src = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/cheese.png";
+const imgShield = new Image(); imgShield.src = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/shield.png";
+const imgSpeed  = new Image(); imgSpeed.src  = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/speed.png";
+const imgBomb   = new Image(); imgBomb.src   = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/bomb.png";
+const imgHeart  = new Image(); imgHeart.src  = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/heart.png";
+
+// ---- State ----
+let player, cats, cheeses, powerups, score, lives, running, gameOver;
+let shieldActive = false, invincibleUntil = 0;
+let highScore = parseInt(localStorage.getItem("mousecat_highscore")||"0");
+let keys = {};
+
+// ---- Helpers ----
+function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+function collide(a,b){ return !(a.x+a.size<b.x||a.x>b.x+b.size||a.y+a.size<b.y||a.y>b.y+b.size); }
+
+function mkCheese(){
+  return {x:40+Math.random()*(W-80), y:40+Math.random()*(H-80), size:32};
+}
+
+function mkCat(){
+  const red = Math.random() < 0.5;
+  const edge = Math.floor(Math.random()*4);
+  let x=0, y=0;
+  switch(edge){
+    case 0: x=Math.random()*(W-50); y=0; break;
+    case 1: x=W-50; y=Math.random()*(H-50); break;
+    case 2: x=Math.random()*(W-50); y=H-50; break;
+    case 3: x=0; y=Math.random()*(H-50); break;
+  }
+  let speed = 1.5 + Math.random()*2;
+  return {x,y,size:48,dx:(Math.random()<0.5?-1:1)*speed,dy:(Math.random()<0.5?-1:1)*speed,red,speed};
+}
+
+function mkPowerup(){
+  const types = ["shield","speed","bomb","heart"];
+  const pick = types[Math.floor(Math.random()*types.length)];
+  return { type: pick, x: 50+Math.random()*(W-100), y: 50+Math.random()*(H-100), size: 32 };
+}
+
+function reset(){
+  player = {x:60,y:60,size:48,speed:5};
+  cats = [mkCat()];
+  cheeses = [mkCheese(), mkCheese()];
+  powerups = [];
+  score = 0; lives = 1;
+  shieldActive = false; invincibleUntil = 0;
+  running = true; gameOver = false;
+  restartBtn.style.display = "none";
+  updateUI();
+}
+
+function updateUI(){
+  scoreEl.textContent = score;
+  livesEl.textContent = lives;
+  highScoreEl.textContent = highScore;
+
+  // Show active powerups
+  const active = [];
+  if (shieldActive) {
+    let timeLeft = Math.max(0, Math.floor((invincibleUntil - Date.now()) / 1000));
+    active.push("🛡️ Shield " + (timeLeft > 0 ? timeLeft + "s" : ""));
+  }
+  if (player.speed > 5) active.push("⚡ Speed");
+  document.getElementById("powerups").textContent = active.join(" | ");
+}
+
+// ---- Input ----
+window.addEventListener("keydown", e=>keys[e.key]=true);
+window.addEventListener("keyup", e=>keys[e.key]=false);
+
+// ---- Update ----
+function update(){
+  if(!running) return;
+
+  // player movement
+  if(keys.ArrowUp||keys.w) player.y -= player.speed;
+  if(keys.ArrowDown||keys.s) player.y += player.speed;
+  if(keys.ArrowLeft||keys.a) player.x -= player.speed;
+  if(keys.ArrowRight||keys.d) player.x += player.speed;
+  player.x = clamp(player.x,0,W-player.size);
+  player.y = clamp(player.y,0,H-player.size);
+
+  // cats
+  cats.forEach(c=>{
+    if(c.red){
+      let angle = Math.atan2(player.y-c.y, player.x-c.x);
+      c.x += Math.cos(angle)*c.speed;
+      c.y += Math.sin(angle)*c.speed;
+    } else {
+      c.x += c.dx; c.y += c.dy;
+      if(c.x<0||c.x>W-c.size) c.dx*=-1;
+      if(c.y<0||c.y>H-c.size) c.dy*=-1;
+    }
+    if(collide(player,c)){
+      if(shieldActive||Date.now()<invincibleUntil){
+        shieldActive=false;
+        invincibleUntil = Date.now()+5000; // 5s invincibility
+      } else {
+        lives=0; running=false; gameOver=true;
+
+        if(score>highScore){
+          highScore=score;
+          localStorage.setItem("mousecat_highscore",highScore);
+        }
+
+        // Save score to online leaderboard
+        let playerName = prompt("Enter your name:");
+        if (playerName) saveScore(playerName, score);
+
+        restartBtn.style.display="block";
+      }
+    }
+  });
+
+  // cheese
+  for(let i=cheeses.length-1;i>=0;i--){
+    if(collide(player,cheeses[i])){
+      score++;
+      cheeses.splice(i,1);
+    }
+  }
+  if(cheeses.length===0){
+    cheeses.push(mkCheese());
+    if(Math.random()<0.5) cats.push(mkCat());
+    if(Math.random()<0.5) powerups.push(mkPowerup());
+  }
+
+  // powerups
+  for(let i=powerups.length-1;i>=0;i--){
+    let p = powerups[i];
+    if(collide(player,p)){
+      if(p.type==="shield"){ shieldActive=true; invincibleUntil=Date.now()+5000; }
+      if(p.type==="speed"){ player.speed=8; setTimeout(()=>player.speed=5,5000); }
+      if(p.type==="heart"){ lives++; }
+      if(p.type==="bomb"){ cats=[]; }
+      powerups.splice(i,1);
+    }
+  }
+
+  updateUI();
+}
+
+// ---- Draw ----
+function draw(){
+  ctx.clearRect(0,0,W,H);
+
+  cheeses.forEach(ch=>{
+    ctx.drawImage(imgCheese,ch.x,ch.y,ch.size,ch.size);
+  });
+
+  powerups.forEach(p=>{
+    let img = imgShield;
+    if(p.type==="speed") img = imgSpeed;
+    if(p.type==="bomb") img = imgBomb;
+    if(p.type==="heart") img = imgHeart;
+    ctx.drawImage(img,p.x,p.y,p.size,p.size);
+  });
+
+  cats.forEach(c=>{
+    if(c.red){
+      ctx.save();
+      ctx.filter="hue-rotate(300deg) saturate(200%)";
+      ctx.drawImage(imgCat,c.x,c.y,c.size,c.size);
+      ctx.restore();
+    } else {
+      ctx.drawImage(imgCat,c.x,c.y,c.size,c.size);
+    }
+  });
+
+  ctx.drawImage(imgPlayer,player.x,player.y,player.size,player.size);
+}
+
+// ---- Loop ----
+function loop(){ update(); draw(); requestAnimationFrame(loop); }
+
+reset();
+loop();
+restartBtn.onclick=()=>reset();
+
+// ---- Leaderboard Functions ----
+async function saveScore(name, score) {
+  await db.collection("leaderboard").add({
+    name: name,
+    score: score,
+    time: Date.now()
+  });
+  loadLeaderboard();
+}
+
+async function loadLeaderboard() {
+  const snapshot = await db.collection("leaderboard")
+    .orderBy("score", "desc")
+    .limit(10)
+    .get();
+
+  const list = document.getElementById("leaderboard");
+  list.innerHTML = "";
+  snapshot.forEach(doc => {
+    let entry = doc.data();
+    let li = document.createElement("li");
+    li.textContent = `${entry.name}: ${entry.score}`;
+    list.appendChild(li);
+  });
+}
+
+// Refresh leaderboard every 5s
+setInterval(loadLeaderboard, 5000);
+loadLeaderboard();
+</script>
+</body>
+</html>
