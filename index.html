@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Grades and Attendance</title>
+<title>Finn's Grades</title>
 <style>
   body {
     margin: 0;
@@ -20,14 +20,10 @@
   #hud {
     font-size: 20px;
   }
-  #leaderboard {
-    margin-top: 20px;
-    font-size: 18px;
-    background: #144826;
-    padding: 10px;
-    border-radius: 12px;
-    display: inline-block;
-    min-width: 250px;
+  #powerups {
+    font-size: 16px;
+    margin-top: 5px;
+    min-height: 24px;
   }
   #restart {
     display: none;
@@ -50,25 +46,8 @@
   Lives: <span id="lives">1</span> &nbsp;&nbsp;
   High Score: <span id="highscore">0</span>
 </div>
-<div id="leaderboard"></div>
+<div id="powerups"></div>
 <button id="restart">Restart</button>
-
-<!-- Firebase SDK -->
-<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js"></script>
-<script>
-  // TODO: Replace with your Firebase project config
-  const firebaseConfig = {
-    apiKey: "AIzaSyBXyVZ8Mbhfo4Sx5JHf3XcyTtFX4V-JiIU",
-    authDomain: "mouse-game-b2db2.firebaseapp.com",
-    projectId: "mouse-game-b2db2",
-    storageBucket: "mouse-game-b2db2.appspot.com",
-    messagingSenderId: "421676719920",
-    appId: "1:421676719920:web:9ea11c80eab35472caf2f5"
-  };
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.firestore();
-</script>
 
 <script>
 // ---- Setup ----
@@ -82,10 +61,11 @@ const highScoreEl = document.getElementById("highscore");
 const restartBtn = document.getElementById("restart");
 
 // ---- Images ----
-const imgPlayer = new Image(); imgPlayer.src = "Player.png";
-const imgCat    = new Image(); imgCat.src    = "Cat.png";
-const imgCheese = new Image(); imgCheese.src = "Cheese.png";
-const imgShield = new Image(); imgShield.src = "Sheild.png"; // file spelled Sheild.png
+const imgPlayer = new Image(); imgPlayer.src = "Player.png";   // mouse
+const imgCat    = new Image(); imgCat.src    = "Cat.png";      // cat
+const imgCheese = new Image(); imgCheese.src = "Cheese.png";   // cheese
+// Powerups
+const imgShield = new Image(); imgShield.src = "Sheild.png";   // ⚠️ file spelled "Sheild.png"
 const imgSpeed  = new Image(); imgSpeed.src  = "Speed.png";
 const imgBomb   = new Image(); imgBomb.src   = "Bomb.png";
 const imgHeart  = new Image(); imgHeart.src  = "Heart.png";
@@ -151,34 +131,6 @@ function updateUI(){
 window.addEventListener("keydown", e=>keys[e.key]=true);
 window.addEventListener("keyup", e=>keys[e.key]=false);
 
-// ---- Firebase Leaderboard ----
-async function saveScore(playerName, score) {
-  try {
-    await db.collection("leaderboard").add({
-      name: playerName,
-      score: score,
-      timestamp: Date.now()
-    });
-    loadLeaderboard();
-  } catch (err) {
-    console.error("Error saving score:", err);
-  }
-}
-
-async function loadLeaderboard() {
-  const snapshot = await db.collection("leaderboard")
-    .orderBy("score","desc")
-    .limit(10)
-    .get();
-
-  const board = document.getElementById("leaderboard");
-  board.innerHTML = "<h2>Top Players</h2>";
-  snapshot.forEach(doc => {
-    const data = doc.data();
-    board.innerHTML += `<div>${data.name}: ${data.score}</div>`;
-  });
-}
-
 // ---- Update ----
 function update(){
   if(!running) return;
@@ -213,12 +165,6 @@ function update(){
           localStorage.setItem("mousecat_highscore",highScore);
         }
         restartBtn.style.display="block";
-
-        // Save score to Firebase
-        let playerName = prompt("Enter your name:");
-        if(playerName){
-          saveScore(playerName, score);
-        }
       }
     }
   });
@@ -291,7 +237,6 @@ function loop(){ update(); draw(); requestAnimationFrame(loop); }
 reset();
 loop();
 restartBtn.onclick=()=>reset();
-loadLeaderboard();
 </script>
 </body>
 </html>
