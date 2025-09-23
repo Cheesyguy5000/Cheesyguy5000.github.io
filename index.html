@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Grades and Attendance</title>
+<title>MouseCat Anime Game</title>
 <style>
   body {
     margin: 0;
@@ -20,10 +20,14 @@
   #hud {
     font-size: 20px;
   }
-  #powerups {
-    font-size: 16px;
-    margin-top: 5px;
-    min-height: 24px;
+  #leaderboard {
+    margin-top: 20px;
+    font-size: 18px;
+    background: #144826;
+    padding: 10px;
+    border-radius: 12px;
+    display: inline-block;
+    min-width: 250px;
   }
   #restart {
     display: none;
@@ -36,17 +40,7 @@
     cursor: pointer;
     font-size: 18px;
   }
-  #leaderboard {
-    list-style: none;
-    padding: 0;
-    font-size: 18px;
-    margin-top: 20px;
-  }
 </style>
-
-<!-- Firebase SDK -->
-<script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js"></script>
 </head>
 <body>
 <canvas id="game" width="900" height="600"></canvas>
@@ -56,25 +50,27 @@
   Lives: <span id="lives">1</span> &nbsp;&nbsp;
   High Score: <span id="highscore">0</span>
 </div>
-<div id="powerups"></div>
+<div id="leaderboard"></div>
 <button id="restart">Restart</button>
 
-<h2>🌍 Global Leaderboard</h2>
-<ul id="leaderboard"></ul>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js"></script>
+<script>
+  // TODO: Replace with your Firebase project config
+  const firebaseConfig = {
+    apiKey: "AIzaSyBXyVZ8Mbhfo4Sx5JHf3XcyTtFX4V-JiIU",
+    authDomain: "mouse-game-b2db2.firebaseapp.com",
+    projectId: "mouse-game-b2db2",
+    storageBucket: "mouse-game-b2db2.firebasestorage.app.appspot.com",
+    messagingSenderId: "421676719920",
+    appId: "1:421676719920:web:9ea11c80eab35472caf2f5"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+</script>
 
 <script>
-// ---- Firebase Setup ----
-const firebaseConfig = {
-  apiKey: "AIzaSyBXyVZ8Mbhfo4Sx5JHf3XcyTtFX4V-JiIU",
-  authDomain: "mouse-game-b2db2.firebaseapp.com",
-  projectId: "mouse-game-b2db2",
-  storageBucket: "mouse-game-b2db2.firebasestorage.app.appspot.com",
-  messagingSenderId: "421676719920",
-  appId: "1:421676719920:web:9ea11c80eab35472caf2f5"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
-
 // ---- Setup ----
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
@@ -86,14 +82,13 @@ const highScoreEl = document.getElementById("highscore");
 const restartBtn = document.getElementById("restart");
 
 // ---- Images ----
-// Replace with your GitHub raw links
-const imgPlayer = new Image(); imgPlayer.src = "https://raw.githubusercontent.com/Cheesyguy5000/Player.png/main/player.png";
-const imgCat    = new Image(); imgCat.src    = "https://raw.githubusercontent.com/Cheesyguy5000/Cat.png/main/cat.png";
-const imgCheese = new Image(); imgCheese.src = "https://raw.githubusercontent.com/Cheesyguy5000/Cheese.png/main/cheese.png";
-const imgShield = new Image(); imgShield.src = "https://raw.githubusercontent.com/Cheesyguy5000/Sheild.png/main/shield.png";
-const imgSpeed  = new Image(); imgSpeed.src  = "https://raw.githubusercontent.com/Cheesyguy5000/Speed.png/main/speed.png";
-const imgBomb   = new Image(); imgBomb.src   = "https://raw.githubusercontent.com/Cheesyguy5000/Bomb.png.png/main/bomb.png";
-const imgHeart  = new Image(); imgHeart.src  = "https://raw.githubusercontent.com/Cheesyguy5000/Heart.png/main/heart.png";
+const imgPlayer = new Image(); imgPlayer.src = "Player.png";
+const imgCat    = new Image(); imgCat.src    = "Cat.png";
+const imgCheese = new Image(); imgCheese.src = "Cheese.png";
+const imgShield = new Image(); imgShield.src = "Sheild.png"; // file spelled Sheild.png
+const imgSpeed  = new Image(); imgSpeed.src  = "Speed.png";
+const imgBomb   = new Image(); imgBomb.src   = "Bomb.png";
+const imgHeart  = new Image(); imgHeart.src  = "Heart.png";
 
 // ---- State ----
 let player, cats, cheeses, powerups, score, lives, running, gameOver;
@@ -126,7 +121,12 @@ function mkCat(){
 function mkPowerup(){
   const types = ["shield","speed","bomb","heart"];
   const pick = types[Math.floor(Math.random()*types.length)];
-  return { type: pick, x: 50+Math.random()*(W-100), y: 50+Math.random()*(H-100), size: 32 };
+  return {
+    type: pick,
+    x: 50+Math.random()*(W-100),
+    y: 50+Math.random()*(H-100),
+    size: 32
+  };
 }
 
 function reset(){
@@ -145,20 +145,39 @@ function updateUI(){
   scoreEl.textContent = score;
   livesEl.textContent = lives;
   highScoreEl.textContent = highScore;
-
-  // Show active powerups
-  const active = [];
-  if (shieldActive) {
-    let timeLeft = Math.max(0, Math.floor((invincibleUntil - Date.now()) / 1000));
-    active.push("🛡️ Shield " + (timeLeft > 0 ? timeLeft + "s" : ""));
-  }
-  if (player.speed > 5) active.push("⚡ Speed");
-  document.getElementById("powerups").textContent = active.join(" | ");
 }
 
 // ---- Input ----
 window.addEventListener("keydown", e=>keys[e.key]=true);
 window.addEventListener("keyup", e=>keys[e.key]=false);
+
+// ---- Firebase Leaderboard ----
+async function saveScore(playerName, score) {
+  try {
+    await db.collection("leaderboard").add({
+      name: playerName,
+      score: score,
+      timestamp: Date.now()
+    });
+    loadLeaderboard();
+  } catch (err) {
+    console.error("Error saving score:", err);
+  }
+}
+
+async function loadLeaderboard() {
+  const snapshot = await db.collection("leaderboard")
+    .orderBy("score","desc")
+    .limit(10)
+    .get();
+
+  const board = document.getElementById("leaderboard");
+  board.innerHTML = "<h2>Top Players</h2>";
+  snapshot.forEach(doc => {
+    const data = doc.data();
+    board.innerHTML += `<div>${data.name}: ${data.score}</div>`;
+  });
+}
 
 // ---- Update ----
 function update(){
@@ -189,17 +208,17 @@ function update(){
         invincibleUntil = Date.now()+5000; // 5s invincibility
       } else {
         lives=0; running=false; gameOver=true;
-
         if(score>highScore){
           highScore=score;
           localStorage.setItem("mousecat_highscore",highScore);
         }
-
-        // Save score to online leaderboard
-        let playerName = prompt("Enter your name:");
-        if (playerName) saveScore(playerName, score);
-
         restartBtn.style.display="block";
+
+        // Save score to Firebase
+        let playerName = prompt("Enter your name:");
+        if(playerName){
+          saveScore(playerName, score);
+        }
       }
     }
   });
@@ -221,7 +240,7 @@ function update(){
   for(let i=powerups.length-1;i>=0;i--){
     let p = powerups[i];
     if(collide(player,p)){
-      if(p.type==="shield"){ shieldActive=true; invincibleUntil=Date.now()+5000; }
+      if(p.type==="shield"){ shieldActive=true; }
       if(p.type==="speed"){ player.speed=8; setTimeout(()=>player.speed=5,5000); }
       if(p.type==="heart"){ lives++; }
       if(p.type==="bomb"){ cats=[]; }
@@ -236,10 +255,12 @@ function update(){
 function draw(){
   ctx.clearRect(0,0,W,H);
 
+  // cheese
   cheeses.forEach(ch=>{
     ctx.drawImage(imgCheese,ch.x,ch.y,ch.size,ch.size);
   });
 
+  // powerups
   powerups.forEach(p=>{
     let img = imgShield;
     if(p.type==="speed") img = imgSpeed;
@@ -248,6 +269,7 @@ function draw(){
     ctx.drawImage(img,p.x,p.y,p.size,p.size);
   });
 
+  // cats
   cats.forEach(c=>{
     if(c.red){
       ctx.save();
@@ -259,6 +281,7 @@ function draw(){
     }
   });
 
+  // player
   ctx.drawImage(imgPlayer,player.x,player.y,player.size,player.size);
 }
 
@@ -268,35 +291,6 @@ function loop(){ update(); draw(); requestAnimationFrame(loop); }
 reset();
 loop();
 restartBtn.onclick=()=>reset();
-
-// ---- Leaderboard Functions ----
-async function saveScore(name, score) {
-  await db.collection("leaderboard").add({
-    name: name,
-    score: score,
-    time: Date.now()
-  });
-  loadLeaderboard();
-}
-
-async function loadLeaderboard() {
-  const snapshot = await db.collection("leaderboard")
-    .orderBy("score", "desc")
-    .limit(10)
-    .get();
-
-  const list = document.getElementById("leaderboard");
-  list.innerHTML = "";
-  snapshot.forEach(doc => {
-    let entry = doc.data();
-    let li = document.createElement("li");
-    li.textContent = `${entry.name}: ${entry.score}`;
-    list.appendChild(li);
-  });
-}
-
-// Refresh leaderboard every 5s
-setInterval(loadLeaderboard, 5000);
 loadLeaderboard();
 </script>
 </body>
